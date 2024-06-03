@@ -1,8 +1,21 @@
 import tkinter as tk
 from tkinter import messagebox
 from cryptography.fernet import Fernet
+import os
 
-key = Fernet.generate_key()
+# Function to load or generate the encryption key
+def load_key():
+    if os.path.exists("secret.key"):
+        with open("secret.key", "rb") as key_file:
+            key = key_file.read()
+    else:
+        key = Fernet.generate_key()
+        with open("secret.key", "wb") as key_file:
+            key_file.write(key)
+    return key
+
+# Load the encryption key
+key = load_key()
 cipher_suite = Fernet(key)
 
 def add():
@@ -11,7 +24,6 @@ def add():
     password = entryPassword.get()
 
     if username and password and WebSite:
-
         encrypted_passwd = cipher_suite.encrypt(password.encode())
 
         with open("passwords.txt", 'a') as f:
@@ -28,52 +40,53 @@ def get():
     username = entryName.get()
 
     passwords = {}
+
     try:
-       
         with open("passwords.txt", 'r') as f:
             for k in f:
                 i = k.split(' ')
-                print(f"Read line: {i}")
-                passwords[i[1]] = decrypt_password(i[2].strip())
-                print(f"Decrypted password for {i[1]}: {passwords[i[1]]}")
+                if len(i) == 3:
+                    web_user_key = (i[0], i[1])  # (Website, Username)
+                    passwords[web_user_key] = decrypt_password(i[2].strip())
     except Exception as e:
-       print(f"ERROR: {e}")
+        print(f"ERROR: {e}")
 
     if passwords:
         mess = "Your passwords:\n"
-        for user in passwords:
-            if user == username:
-                mess += f"Password for {username} is {passwords[user]}\n"
-                break
+        key = (WebSite, username)
+        print(f"Looking for key: {key} in passwords: {passwords.keys()}")
+        if key in passwords:
+            mess += f"Password for {username} at {WebSite} is {passwords[key]}\n"
         else:
-            mess += "No Such Username Exists !!"
+            mess += "No Such Username and Website Combination Exists !!"
         messagebox.showinfo("Passwords", mess)
     else:
         messagebox.showinfo("Passwords", "EMPTY LIST!!")
 
 def getlist():
-    passwords = {}
+    website = {}
 
     try:
         with open("passwords.txt", 'r') as f:
             for k in f:
                 i = k.split(' ')
-                passwords[i[1]] = i[2]
+                website[i[0]] = i[1]
     except:
         print("No passwords found!!")
 
-    if passwords:
+    if website:
         mess = "List of passwords:\n"
-        for name, password in passwords.items():
+        for name, website in website.items():
             
-            mess += f"Password for {name} is {password}\n"
+            mess += f"User for {name} is {website}\n"
        
-        messagebox.showinfo("Passwords", mess)
+        messagebox.showinfo("Website", mess)
     else:
-        messagebox.showinfo("Passwords", "Empty List !!")
+        messagebox.showinfo("Website", "Empty List !!")
 
 
 def delete():
+    WebSite = entrySite.get()
     username = entryName.get()
 
     temp_passwords = []
@@ -82,22 +95,19 @@ def delete():
         with open("passwords.txt", 'r') as f:
             for k in f:
                 i = k.split(' ')
-                if i[0] != username:
-                    temp_passwords.append(f"{i[0]} {i[1]}")
-
+                if len(i) == 3:
+                    if i[0] != WebSite or i[1] != username:
+                        temp_passwords.append(f"{i[0]} {i[1]} {i[2]}")
         with open("passwords.txt", 'w') as f:
             for line in temp_passwords:
                 f.write(line)
-
-        messagebox.showinfo(
-            "Success", f"User {username} deleted successfully!")
+        messagebox.showinfo("Success", f"User {username} at {WebSite} deleted successfully!")
     except Exception as e:
-        messagebox.showerror("Error", f"Error deleting user {username}: {e}")
-
+        messagebox.showerror("Error", f"Error deleting user {username} at {WebSite}: {e}")
 
 if __name__ == "__main__":
     app = tk.Tk()
-    app.geometry("560x270")
+    app.geometry("240x200")
     app.title("UMWS Password Manager")
    
     labelName = tk.Label(app, text="WEBSITE:")

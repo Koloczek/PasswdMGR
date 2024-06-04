@@ -57,9 +57,10 @@ def get():
         print(f"Looking for key: {key} in passwords: {passwords.keys()}")
         if key in passwords:
             mess += f"Password for {username} at {WebSite} is {passwords[key]}\n"
+            messagebox.showinfo("Passwords", mess)
         else:
             mess += "Please enter USERNAME and WEBSITE in the fields"
-        messagebox.showerror("Error", mess)
+            messagebox.showerror("Error", mess)
     else:
         messagebox.showerror("Passwords", "EMPTY LIST!!")
 

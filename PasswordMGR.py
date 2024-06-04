@@ -58,10 +58,10 @@ def get():
         if key in passwords:
             mess += f"Password for {username} at {WebSite} is {passwords[key]}\n"
         else:
-            mess += "No Such Username and Website Combination Exists !!"
-        messagebox.showinfo("Passwords", mess)
+            mess += "Please enter USERNAME and WEBSITE in the fields"
+        messagebox.showerror("Error", mess)
     else:
-        messagebox.showinfo("Passwords", "EMPTY LIST!!")
+        messagebox.showerror("Passwords", "EMPTY LIST!!")
 
 def getlist():
     website = {}
@@ -72,17 +72,17 @@ def getlist():
                 i = k.split(' ')
                 website[i[0]] = i[1]
     except:
-        print("No passwords found!!")
+        print("No users found!!")
 
     if website:
-        mess = "List of passwords:\n"
+        mess = "List of users:\n"
         for name, website in website.items():
             
             mess += f"User for {name} is {website}\n"
        
-        messagebox.showinfo("Website", mess)
+        messagebox.showinfo("Users", mess)
     else:
-        messagebox.showinfo("Website", "Empty List !!")
+        messagebox.showerror("Users", "Empty List !!")
 
 
 def delete():
@@ -131,7 +131,7 @@ if __name__ == "__main__":
     buttonGet = tk.Button(app, text="Get", command=get)
     buttonGet.grid(row=3, column=1, padx=15, pady=8, sticky="we")
 
-    buttonList = tk.Button(app, text="List", command=getlist)
+    buttonList = tk.Button(app, text="UserList", command=getlist)
     buttonList.grid(row=4, column=0, padx=15, pady=8, sticky="we")
 
     buttonDelete = tk.Button(app, text="Delete", command=delete)

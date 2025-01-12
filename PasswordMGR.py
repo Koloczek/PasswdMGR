@@ -109,7 +109,7 @@ def delete():
 if __name__ == "__main__":
     app = tk.Tk()
     app.geometry("240x200")
-    app.title("UMWS Password Manager")
+    app.title("Password Manager")
    
     labelName = tk.Label(app, text="WEBSITE:")
     labelName.grid(row=0, column=0, padx=10, pady=5)

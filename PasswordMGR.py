@@ -1,9 +1,16 @@
 import tkinter as tk
 from tkinter import messagebox
-from cryptography.fernet import Fernet
+import hashlib
 import os
+import sqlite3
+import time
+from cryptography.fernet import Fernet
 
-# Function to load or generate the encryption key
+DB_FILENAME = "password_manager.db"
+
+def hash_master_password(password: str) -> str:
+    return hashlib.sha512(password.encode()).hexdigest()
+
 def load_key():
     if os.path.exists("secret.key"):
         with open("secret.key", "rb") as key_file:
@@ -14,128 +21,335 @@ def load_key():
             key_file.write(key)
     return key
 
-# Load the encryption key
 key = load_key()
 cipher_suite = Fernet(key)
 
-def add():
-    WebSite = entrySite.get()
-    username = entryName.get()
-    password = entryPassword.get()
+def encrypt_password(plain_text_password: str) -> str:
+    return cipher_suite.encrypt(plain_text_password.encode()).decode()
 
-    if username and password and WebSite:
-        encrypted_passwd = cipher_suite.encrypt(password.encode())
+def decrypt_password(encrypted_password: str) -> str:
+    return cipher_suite.decrypt(encrypted_password.encode()).decode()
 
-        with open("passwords.txt", 'a') as f:
-            f.write(f"{WebSite} {username} {encrypted_passwd.decode()}\n")
-        messagebox.showinfo("Success", "Password added !!")
-    else:
-        messagebox.showerror("Error", "Please enter all of the fields")
+def initialize_database():
+    first_run = False
 
-def decrypt_password(encrypted_passwd):
-    return cipher_suite.decrypt(encrypted_passwd.encode()).decode()
+    if not os.path.exists(DB_FILENAME):
+        first_run = True
 
-def get():
-    WebSite = entrySite.get()
-    username = entryName.get()
+    # Łączymy się / tworzymy bazę
+    conn = sqlite3.connect(DB_FILENAME)
+    cursor = conn.cursor()
 
-    passwords = {}
+    if first_run:
+        # Tworzymy tabele tylko raz, przy pierwszym uruchomieniu
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS passwords (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                website TEXT NOT NULL,
+                username TEXT NOT NULL,
+                password TEXT NOT NULL
+            )
+        """)
 
-    try:
-        with open("passwords.txt", 'r') as f:
-            for k in f:
-                i = k.split(' ')
-                if len(i) == 3:
-                    web_user_key = (i[0], i[1])  # (Website, Username)
-                    passwords[web_user_key] = decrypt_password(i[2].strip())
-    except Exception as e:
-        print(f"ERROR: {e}")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS master_password (
+                id INTEGER PRIMARY KEY,
+                password_hash TEXT,
+                attempt_count INTEGER DEFAULT 0,
+                lock_until REAL
+            )
+        """)
+        conn.commit()
 
-    if passwords:
-        mess = "Your passwords:\n"
-        key = (WebSite, username)
-        print(f"Looking for key: {key} in passwords: {passwords.keys()}")
-        if key in passwords:
-            mess += f"Password for {username} at {WebSite} is {passwords[key]}\n"
-            messagebox.showinfo("Passwords", mess)
+    return conn, cursor
+
+conn, cursor = initialize_database()
+
+# Sprawdzamy, czy Master Password jest już ustawione
+cursor.execute("SELECT password_hash FROM master_password LIMIT 1")
+row = cursor.fetchone()
+MASTER_PASSWORD_SET = True if (row and row[0]) else False
+
+
+class SetMasterPasswordWindow(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Set Master Password")
+        self.geometry("300x180")
+        self.resizable(False, False)
+
+        tk.Label(self, text="Set your new Master Password:").pack(pady=(10, 5))
+        tk.Label(self, text="Enter Master Password:").pack()
+        self.entry_pass1 = tk.Entry(self, show="*")
+        self.entry_pass1.pack()
+
+        tk.Label(self, text="Confirm Master Password:").pack()
+        self.entry_pass2 = tk.Entry(self, show="*")
+        self.entry_pass2.pack()
+
+        btn_set = tk.Button(self, text="Set Master Password", command=self.set_master_password)
+        btn_set.pack(pady=(10, 5))
+
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def set_master_password(self):
+        p1 = self.entry_pass1.get()
+        p2 = self.entry_pass2.get()
+
+        if not p1 or not p2:
+            messagebox.showerror("Error", "Fields cannot be empty!")
+            return
+        if p1 != p2:
+            messagebox.showerror("Error", "Passwords do not match!")
+            return
+
+        hashed = hash_master_password(p1)
+        try:
+            cursor.execute("""
+                INSERT INTO master_password (id, password_hash, attempt_count, lock_until)
+                VALUES (?, ?, ?, ?)
+            """, (1, hashed, 0, None))
+            conn.commit()
+
+            messagebox.showinfo("Success", "Master Password has been set!")
+            self.destroy()
+            main_app = MainApp()
+            main_app.mainloop()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save Master Password: {e}")
+
+    def on_closing(self):
+        conn.close()
+        self.destroy()
+        exit(0)
+
+class LoginWindow(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Login - Master Password")
+        self.geometry("300x150")
+        self.resizable(False, False)
+
+        tk.Label(self, text="Enter Master Password:").pack(pady=(15, 5))
+        self.entry_master = tk.Entry(self, show="*")
+        self.entry_master.pack()
+
+        btn_ok = tk.Button(self, text="OK", command=self.check_password)
+        btn_ok.pack(pady=(10, 5))
+
+        self.entry_master.bind("<Return>", lambda e: self.check_password())
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def check_password(self):
+        user_input = self.entry_master.get().strip()
+        if not user_input:
+            messagebox.showerror("Error", "Password cannot be empty!")
+            return
+
+        cursor.execute("SELECT password_hash, attempt_count, lock_until FROM master_password LIMIT 1")
+        result = cursor.fetchone()
+        if not result:
+            messagebox.showerror("Error", "No Master Password found in DB!")
+            conn.close()
+            self.destroy()
+            exit(0)
+
+        stored_hash, attempt_count, lock_until = result
+
+        # blokada 15-minutowa
+        now = time.time()
+        if lock_until is not None and now < lock_until:
+            remaining = int(lock_until - now)
+            mins = remaining // 60
+            secs = remaining % 60
+            messagebox.showerror(
+                "Locked",
+                f"Too many failed attempts. Please wait {mins}m {secs}s before next try."
+            )
+            return
+
+        # Sprawdzamy hasło
+        if hash_master_password(user_input) == stored_hash:
+            # Hasło poprawne => reset licznika
+            cursor.execute("""
+                UPDATE master_password
+                SET attempt_count = 0,
+                    lock_until = NULL
+                WHERE id = 1
+            """)
+            conn.commit()
+
+            messagebox.showinfo("Success", "Login successful!")
+            self.destroy()
+            main_app = MainApp()
+            main_app.mainloop()
         else:
-            mess += "Please enter USERNAME and WEBSITE in the fields"
-            messagebox.showerror("Error", mess)
-    else:
-        messagebox.showerror("Passwords", "EMPTY LIST!!")
+            # Hasło niepoprawne
+            attempt_count += 1
+            if attempt_count >= 3:
+                lock_time = now + (15 * 60)  # 15 minut
+                cursor.execute("""
+                    UPDATE master_password
+                    SET attempt_count = 0,
+                        lock_until = ?
+                    WHERE id = 1
+                """, (lock_time,))
+                conn.commit()
+                messagebox.showerror(
+                    "Locked",
+                    "You have entered incorrect password 3 times!\n"
+                    "Login is locked for 15 minutes."
+                )
+            else:
+                cursor.execute("""
+                    UPDATE master_password
+                    SET attempt_count = ?
+                    WHERE id = 1
+                """, (attempt_count,))
+                conn.commit()
+                attempts_left = 3 - attempt_count
+                messagebox.showerror("Error", f"Invalid Master Password! Attempts left: {attempts_left}")
 
-def getlist():
-    website = {}
+    def on_closing(self):
+        conn.close()
+        self.destroy()
+        exit(0)
 
-    try:
-        with open("passwords.txt", 'r') as f:
-            for k in f:
-                i = k.split(' ')
-                website[i[0]] = i[1]
-    except:
-        print("No users found!!")
+class MainApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Password Manager - SQLite")
+        self.geometry("320x240")
+        self.resizable(False, False)
 
-    if website:
-        mess = "List of users:\n"
-        for name, website in website.items():
-            
-            mess += f"User for {name} is {website}\n"
-       
-        messagebox.showinfo("Users", mess)
-    else:
-        messagebox.showerror("Users", "Empty List !!")
+        tk.Label(self, text="WEBSITE:").grid(row=0, column=0, padx=10, pady=5, sticky="e")
+        self.entry_site = tk.Entry(self, width=20)
+        self.entry_site.grid(row=0, column=1, padx=10, pady=5)
 
+        tk.Label(self, text="USERNAME:").grid(row=1, column=0, padx=10, pady=5, sticky="e")
+        self.entry_username = tk.Entry(self, width=20)
+        self.entry_username.grid(row=1, column=1, padx=10, pady=5)
 
-def delete():
-    WebSite = entrySite.get()
-    username = entryName.get()
+        tk.Label(self, text="PASSWORD:").grid(row=2, column=0, padx=10, pady=5, sticky="e")
+        self.entry_password = tk.Entry(self, width=20)
+        self.entry_password.grid(row=2, column=1, padx=10, pady=5)
 
-    temp_passwords = []
+        btn_add = tk.Button(self, text="Add", command=self.add_password)
+        btn_add.grid(row=3, column=0, padx=15, pady=8, sticky="we")
 
-    try:
-        with open("passwords.txt", 'r') as f:
-            for k in f:
-                i = k.split(' ')
-                if len(i) == 3:
-                    if i[0] != WebSite or i[1] != username:
-                        temp_passwords.append(f"{i[0]} {i[1]} {i[2]}")
-        with open("passwords.txt", 'w') as f:
-            for line in temp_passwords:
-                f.write(line)
-        messagebox.showinfo("Success", f"User {username} at {WebSite} deleted successfully!")
-    except Exception as e:
-        messagebox.showerror("Error", f"Error deleting user {username} at {WebSite}: {e}")
+        btn_get = tk.Button(self, text="Get", command=self.get_password)
+        btn_get.grid(row=3, column=1, padx=15, pady=8, sticky="we")
+
+        btn_list = tk.Button(self, text="UserList", command=self.get_list)
+        btn_list.grid(row=4, column=0, padx=15, pady=8, sticky="we")
+
+        btn_delete = tk.Button(self, text="Delete", command=self.delete_entry)
+        btn_delete.grid(row=4, column=1, padx=15, pady=8, sticky="we")
+
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def validate_input(self, website, username, password):
+        if not website or not username or not password:
+            messagebox.showerror("Error", "Fields cannot be empty!")
+            return False
+        if website == username == password:
+            messagebox.showerror("Error", "Website, Username and Password cannot all be identical!")
+            return False
+
+        cursor.execute("SELECT id FROM passwords WHERE website=? AND username=?", (website, username))
+        existing = cursor.fetchone()
+        if existing:
+            messagebox.showerror("Error", "Entry with this WEBSITE and USERNAME already exists!")
+            return False
+        return True
+
+    def add_password(self):
+        website = self.entry_site.get().strip()
+        username = self.entry_username.get().strip()
+        password = self.entry_password.get().strip()
+
+        if not self.validate_input(website, username, password):
+            return
+
+        encrypted_passwd = encrypt_password(password)
+        try:
+            cursor.execute("""
+                INSERT INTO passwords (website, username, password)
+                VALUES (?, ?, ?)
+            """, (website, username, encrypted_passwd))
+            conn.commit()
+            messagebox.showinfo("Success", "Password added!")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error adding record: {e}")
+
+    def get_password(self):
+        website = self.entry_site.get().strip()
+        username = self.entry_username.get().strip()
+
+        if not website or not username:
+            messagebox.showerror("Error", "Please enter both WEBSITE and USERNAME")
+            return
+
+        try:
+            cursor.execute(
+                "SELECT password FROM passwords WHERE website=? AND username=?",
+                (website, username)
+            )
+            result = cursor.fetchone()
+            if result:
+                encrypted_pass = result[0]
+                decrypted_pass = decrypt_password(encrypted_pass)
+                msg = f"Password for {username} at {website}:\n{decrypted_pass}"
+                messagebox.showinfo("Password", msg)
+            else:
+                messagebox.showerror("Error", "No password found for given WEBSITE and USERNAME")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error retrieving password: {e}")
+
+    def get_list(self):
+        try:
+            cursor.execute("SELECT website, username FROM passwords")
+            results = cursor.fetchall()
+            if results:
+                msg = "List of stored credentials:\n\n"
+                for site, user in results:
+                    msg += f"Website: {site}, User: {user}\n"
+                messagebox.showinfo("UserList", msg)
+            else:
+                messagebox.showinfo("UserList", "Empty list!")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error retrieving list: {e}")
+
+    def delete_entry(self):
+        website = self.entry_site.get().strip()
+        username = self.entry_username.get().strip()
+
+        if not website or not username:
+            messagebox.showerror("Error", "Please enter both WEBSITE and USERNAME to delete")
+            return
+
+        try:
+            cursor.execute(
+                "DELETE FROM passwords WHERE website=? AND username=?",
+                (website, username)
+            )
+            conn.commit()
+            if cursor.rowcount > 0:
+                messagebox.showinfo("Success", f"Deleted entry for {username} at {website}")
+            else:
+                messagebox.showerror("Error", "No entry found to delete for given WEBSITE and USERNAME")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error deleting entry: {e}")
+
+    def on_closing(self):
+        conn.close()
+        self.destroy()
 
 if __name__ == "__main__":
-    app = tk.Tk()
-    app.geometry("240x200")
-    app.title("Password Manager")
-   
-    labelName = tk.Label(app, text="WEBSITE:")
-    labelName.grid(row=0, column=0, padx=10, pady=5)
-    entrySite = tk.Entry(app)
-    entrySite.grid(row=0, column=1, padx=10, pady=5)
-
-    labelName = tk.Label(app, text="USERNAME:")
-    labelName.grid(row=1, column=0, padx=10, pady=5)
-    entryName = tk.Entry(app)
-    entryName.grid(row=1, column=1, padx=10, pady=5)
-
-    labelPassword = tk.Label(app, text="PASSWORD:")
-    labelPassword.grid(row=2, column=0, padx=10, pady=5)
-    entryPassword = tk.Entry(app)
-    entryPassword.grid(row=2, column=1, padx=10, pady=5)
-
-    buttonAdd = tk.Button(app, text="Add", command=add)
-    buttonAdd.grid(row=3, column=0, padx=15, pady=8, sticky="we")
-
-    buttonGet = tk.Button(app, text="Get", command=get)
-    buttonGet.grid(row=3, column=1, padx=15, pady=8, sticky="we")
-
-    buttonList = tk.Button(app, text="UserList", command=getlist)
-    buttonList.grid(row=4, column=0, padx=15, pady=8, sticky="we")
-
-    buttonDelete = tk.Button(app, text="Delete", command=delete)
-    buttonDelete.grid(row=4, column=1, padx=15, pady=8, sticky="we")
-
-    app.mainloop()
+    if not MASTER_PASSWORD_SET:
+        # Nie ma rekordu w tabeli master_password -> SetMasterPasswordWindow
+        app = SetMasterPasswordWindow()
+        app.mainloop()
+    else:
+        login = LoginWindow()
+        login.mainloop()

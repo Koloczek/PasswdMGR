@@ -1,5 +1,5 @@
-import tkinter as tk
-from tkinter import messagebox
+import customtkinter as ctk
+import tkinter.messagebox as messagebox
 import hashlib
 import os
 import sqlite3
@@ -36,12 +36,10 @@ def initialize_database():
     if not os.path.exists(DB_FILENAME):
         first_run = True
 
-    # Łączymy się / tworzymy bazę
     conn = sqlite3.connect(DB_FILENAME)
     cursor = conn.cursor()
 
     if first_run:
-        # Tworzymy tabele tylko raz, przy pierwszym uruchomieniu
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS passwords (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,29 +63,26 @@ def initialize_database():
 
 conn, cursor = initialize_database()
 
-# Sprawdzamy, czy Master Password jest już ustawione
 cursor.execute("SELECT password_hash FROM master_password LIMIT 1")
 row = cursor.fetchone()
 MASTER_PASSWORD_SET = True if (row and row[0]) else False
 
-
-class SetMasterPasswordWindow(tk.Tk):
+class SetMasterPasswordWindow(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Set Master Password")
-        self.geometry("300x180")
-        self.resizable(False, False)
+        self.geometry("400x250")
 
-        tk.Label(self, text="Set your new Master Password:").pack(pady=(10, 5))
-        tk.Label(self, text="Enter Master Password:").pack()
-        self.entry_pass1 = tk.Entry(self, show="*")
-        self.entry_pass1.pack()
+        ctk.CTkLabel(self, text="Set your new Master Password:").pack(pady=(10, 5))
+        ctk.CTkLabel(self, text="Enter Master Password:").pack()
+        self.entry_pass1 = ctk.CTkEntry(self, show="*")
+        self.entry_pass1.pack(pady=5)
 
-        tk.Label(self, text="Confirm Master Password:").pack()
-        self.entry_pass2 = tk.Entry(self, show="*")
-        self.entry_pass2.pack()
+        ctk.CTkLabel(self, text="Confirm Master Password:").pack()
+        self.entry_pass2 = ctk.CTkEntry(self, show="*")
+        self.entry_pass2.pack(pady=5)
 
-        btn_set = tk.Button(self, text="Set Master Password", command=self.set_master_password)
+        btn_set = ctk.CTkButton(self, text="Set Master Password", command=self.set_master_password)
         btn_set.pack(pady=(10, 5))
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -123,18 +118,17 @@ class SetMasterPasswordWindow(tk.Tk):
         self.destroy()
         exit(0)
 
-class LoginWindow(tk.Tk):
+class LoginWindow(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Login - Master Password")
-        self.geometry("300x150")
-        self.resizable(False, False)
+        self.geometry("400x200")
 
-        tk.Label(self, text="Enter Master Password:").pack(pady=(15, 5))
-        self.entry_master = tk.Entry(self, show="*")
-        self.entry_master.pack()
+        ctk.CTkLabel(self, text="Enter Master Password:").pack(pady=(15, 5))
+        self.entry_master = ctk.CTkEntry(self, show="*")
+        self.entry_master.pack(pady=5)
 
-        btn_ok = tk.Button(self, text="OK", command=self.check_password)
+        btn_ok = ctk.CTkButton(self, text="OK", command=self.check_password)
         btn_ok.pack(pady=(10, 5))
 
         self.entry_master.bind("<Return>", lambda e: self.check_password())
@@ -156,7 +150,6 @@ class LoginWindow(tk.Tk):
 
         stored_hash, attempt_count, lock_until = result
 
-        # blokada 15-minutowa
         now = time.time()
         if lock_until is not None and now < lock_until:
             remaining = int(lock_until - now)
@@ -168,9 +161,7 @@ class LoginWindow(tk.Tk):
             )
             return
 
-        # Sprawdzamy hasło
         if hash_master_password(user_input) == stored_hash:
-            # Hasło poprawne => reset licznika
             cursor.execute("""
                 UPDATE master_password
                 SET attempt_count = 0,
@@ -184,10 +175,9 @@ class LoginWindow(tk.Tk):
             main_app = MainApp()
             main_app.mainloop()
         else:
-            # Hasło niepoprawne
             attempt_count += 1
             if attempt_count >= 3:
-                lock_time = now + (15 * 60)  # 15 minut
+                lock_time = now + (15 * 60)
                 cursor.execute("""
                     UPDATE master_password
                     SET attempt_count = 0,
@@ -215,35 +205,34 @@ class LoginWindow(tk.Tk):
         self.destroy()
         exit(0)
 
-class MainApp(tk.Tk):
+class MainApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Password Manager - SQLite")
-        self.geometry("320x240")
-        self.resizable(False, False)
+        self.geometry("500x350")
 
-        tk.Label(self, text="WEBSITE:").grid(row=0, column=0, padx=10, pady=5, sticky="e")
-        self.entry_site = tk.Entry(self, width=20)
+        ctk.CTkLabel(self, text="WEBSITE:").grid(row=0, column=0, padx=10, pady=5, sticky="e")
+        self.entry_site = ctk.CTkEntry(self, width=200)
         self.entry_site.grid(row=0, column=1, padx=10, pady=5)
 
-        tk.Label(self, text="USERNAME:").grid(row=1, column=0, padx=10, pady=5, sticky="e")
-        self.entry_username = tk.Entry(self, width=20)
+        ctk.CTkLabel(self, text="USERNAME:").grid(row=1, column=0, padx=10, pady=5, sticky="e")
+        self.entry_username = ctk.CTkEntry(self, width=200)
         self.entry_username.grid(row=1, column=1, padx=10, pady=5)
 
-        tk.Label(self, text="PASSWORD:").grid(row=2, column=0, padx=10, pady=5, sticky="e")
-        self.entry_password = tk.Entry(self, width=20)
+        ctk.CTkLabel(self, text="PASSWORD:").grid(row=2, column=0, padx=10, pady=5, sticky="e")
+        self.entry_password = ctk.CTkEntry(self, width=200)
         self.entry_password.grid(row=2, column=1, padx=10, pady=5)
 
-        btn_add = tk.Button(self, text="Add", command=self.add_password)
+        btn_add = ctk.CTkButton(self, text="Add", command=self.add_password)
         btn_add.grid(row=3, column=0, padx=15, pady=8, sticky="we")
 
-        btn_get = tk.Button(self, text="Get", command=self.get_password)
+        btn_get = ctk.CTkButton(self, text="Get", command=self.get_password)
         btn_get.grid(row=3, column=1, padx=15, pady=8, sticky="we")
 
-        btn_list = tk.Button(self, text="UserList", command=self.get_list)
+        btn_list = ctk.CTkButton(self, text="UserList", command=self.get_list)
         btn_list.grid(row=4, column=0, padx=15, pady=8, sticky="we")
 
-        btn_delete = tk.Button(self, text="Delete", command=self.delete_entry)
+        btn_delete = ctk.CTkButton(self, text="Delete", command=self.delete_entry)
         btn_delete.grid(row=4, column=1, padx=15, pady=8, sticky="we")
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -346,8 +335,10 @@ class MainApp(tk.Tk):
         self.destroy()
 
 if __name__ == "__main__":
+    ctk.set_appearance_mode("System")
+    ctk.set_default_color_theme("blue")
+
     if not MASTER_PASSWORD_SET:
-        # Nie ma rekordu w tabeli master_password -> SetMasterPasswordWindow
         app = SetMasterPasswordWindow()
         app.mainloop()
     else:

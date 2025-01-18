@@ -1,3 +1,4 @@
+from CTkListbox import *
 import customtkinter as ctk
 import tkinter.messagebox as messagebox
 import hashlib
@@ -68,6 +69,34 @@ conn, cursor = initialize_database()
 cursor.execute("SELECT password_hash FROM master_password LIMIT 1")
 row = cursor.fetchone()
 MASTER_PASSWORD_SET = True if (row and row[0]) else False
+
+class SelectListBox(ctk.CTkFrame):
+    def __init__(self, master=None, **kwargs):
+        super().__init__(master, **kwargs)
+
+        # Create a CTkListbox widget
+        self.listbox = CTkListbox(self, **kwargs)  # Set height and width as per your need
+        self.listbox.pack(padx=10, pady=10, fill="both", expand=True)
+
+        self.populate_listbox()
+
+    def populate_listbox(self):
+        # Clear the existing items in the listbox
+        self.listbox.delete(0, ctk.END)
+
+        # Fetch data from the database and populate the listbox
+        cursor.execute("SELECT website, username FROM passwords")
+        results = cursor.fetchall()
+
+        if results:
+            for website, username in results:
+                self.listbox.insert(ctk.END, f"Website: {website}, User: {username}")
+        else:
+            self.listbox.insert(ctk.END, "No entries found")
+
+    def refresh_listbox(self):
+        """Refresh the listbox data after adding a new entry."""
+        self.populate_listbox()
 
 
 class CTkMessageBox(ctk.CTkToplevel):
@@ -233,7 +262,7 @@ class MainApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Password Manager - SQLite")
-        self.geometry("500x450")  # Początkowy rozmiar okna
+        self.geometry("700x450")  # Początkowy rozmiar okna
 
         self.remaining_time = 180  # 3 minuty w sekundach
         self.countdown_label = ctk.CTkLabel(self, text=f"Session time left: {self.remaining_time}s")
@@ -248,6 +277,9 @@ class MainApp(ctk.CTk):
         # Ustawienie skalowalności dla całego okna
         self.grid_rowconfigure((0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10), weight=1)  # Wszystkie wiersze
         self.grid_columnconfigure((0, 1), weight=1)  # Obie kolumny
+
+        self.listbox = SelectListBox(self, width=200)
+        self.listbox.grid(row=0, column=0, sticky="nsew")
 
         ctk.CTkLabel(self, text="WEBSITE:").grid(row=0, column=0, padx=10, pady=5, sticky="e")
         self.entry_site = ctk.CTkEntry(self)
@@ -266,9 +298,6 @@ class MainApp(ctk.CTk):
 
         btn_get = ctk.CTkButton(self, text="Get", command=self.get_password)
         btn_get.grid(row=3, column=1, padx=15, pady=8, sticky="we")
-
-        btn_list = ctk.CTkButton(self, text="UserList", command=self.get_list)
-        btn_list.grid(row=4, column=0, padx=15, pady=8, sticky="we")
 
         btn_delete = ctk.CTkButton(self, text="Delete", command=self.delete_entry)
         btn_delete.grid(row=4, column=1, padx=15, pady=8, sticky="we")
@@ -301,6 +330,7 @@ class MainApp(ctk.CTk):
         btn_generate.grid(row=8, column=0, columnspan=2, pady=10, padx=10, sticky="we")
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
 
 
     def reset_inactivity_timer(self, event=None):
@@ -357,6 +387,25 @@ class MainApp(ctk.CTk):
             return False
         return True
 
+
+    def refresh_listbox(self):
+        """Method to refresh the listbox with the latest data from the database"""
+        # Fetch data from the database
+        try:
+            cursor.execute("SELECT website, username FROM passwords")
+            results = cursor.fetchall()
+
+            # Clear the listbox
+            self.listbox.listbox.delete(0, ctk.END)
+
+            # Add the fetched data to the listbox
+            for website, username in results:
+                list_item = f"Website: {website}, User: {username}"
+                self.listbox.listbox.insert(ctk.END, list_item)
+        except Exception as e:
+            CTkMessageBox("Error", f"Error refreshing list: {e}")
+
+
     def add_password(self):
         website = self.entry_site.get().strip()
         username = self.entry_username.get().strip()
@@ -373,17 +422,29 @@ class MainApp(ctk.CTk):
             """, (website, username, encrypted_passwd))
             conn.commit()
             CTkMessageBox("Success", "Password added!")
+
+            # Refresh the listbox after adding a new entry
+            self.refresh_listbox()
+
         except Exception as e:
             CTkMessageBox("Error", f"Error adding record: {e}")
 
     def get_password(self):
-        website = self.entry_site.get().strip()
-        username = self.entry_username.get().strip()
+        # Get the selected item from the listbox
+        selected_item = self.listbox.listbox.get(self.listbox.listbox.curselection())
 
-        if not website or not username:
-            CTkMessageBox("Error", "Please enter both WEBSITE and USERNAME")
+        if not selected_item:
+            CTkMessageBox("Error", "No item selected from the list!")
             return
 
+        # Extract website and username from the selected item
+        try:
+            website, username = selected_item.replace("Website: ", "").split(", User: ")
+        except ValueError:
+            CTkMessageBox("Error", "Invalid item selected. Could not parse website and username.")
+            return
+
+        # Fetch the encrypted password from the database
         try:
             cursor.execute(
                 "SELECT password FROM passwords WHERE website=? AND username=?",
@@ -400,38 +461,36 @@ class MainApp(ctk.CTk):
         except Exception as e:
             CTkMessageBox("Error", f"Error retrieving password: {e}")
 
-    def get_list(self):
-        try:
-            cursor.execute("SELECT website, username FROM passwords")
-            results = cursor.fetchall()
-            if results:
-                msg = "List of stored credentials:\n\n"
-                for site, user in results:
-                    msg += f"Website: {site}, User: {user}\n"
-                CTkMessageBox("UserList", msg)
-            else:
-                CTkMessageBox("UserList", "Empty list!")
-        except Exception as e:
-            CTkMessageBox("Error", f"Error retrieving list: {e}")
 
     def delete_entry(self):
-        website = self.entry_site.get().strip()
-        username = self.entry_username.get().strip()
+        # Get the selected item from the listbox
+        selected_item = self.listbox.listbox.get(self.listbox.listbox.curselection())
 
-        if not website or not username:
-            CTkMessageBox("Error", "Please enter both WEBSITE and USERNAME to delete")
+        if not selected_item:
+            CTkMessageBox("Error", "No item selected from the list!")
             return
 
+        # Extract website and username from the selected item
+        try:
+            website, username = selected_item.replace("Website: ", "").split(", User: ")
+        except ValueError:
+            CTkMessageBox("Error", "Invalid item selected. Could not parse website and username.")
+            return
+
+        # Delete the corresponding entry from the database
         try:
             cursor.execute(
                 "DELETE FROM passwords WHERE website=? AND username=?",
                 (website, username)
             )
             conn.commit()
+
             if cursor.rowcount > 0:
+                # If the entry was deleted from the database, remove it from the listbox
+                self.listbox.listbox.delete(self.listbox.listbox.curselection())
                 CTkMessageBox("Success", f"Deleted entry for {username} at {website}")
             else:
-                CTkMessageBox("Error", "No entry found to delete for given WEBSITE and USERNAME")
+                CTkMessageBox("Error", "No entry found to delete for the given WEBSITE and USERNAME")
         except Exception as e:
             CTkMessageBox("Error", f"Error deleting entry: {e}")
 

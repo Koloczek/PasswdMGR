@@ -70,6 +70,20 @@ cursor.execute("SELECT password_hash FROM master_password LIMIT 1")
 row = cursor.fetchone()
 MASTER_PASSWORD_SET = True if (row and row[0]) else False
 
+def center_window(win, window_width=400, window_height=200, topmost=False):
+    win.resizable(False, False)
+
+    screen_width = win.winfo_screenwidth()
+    screen_height = win.winfo_screenheight()
+    x = (screen_width - window_width) // 2
+    y = (screen_height - window_height) // 2
+
+    win.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
+    if topmost:
+        win.lift()
+        win.attributes("-topmost", True)
+
 class SelectListBox(ctk.CTkFrame):
     def __init__(self, master=None, **kwargs):
         super().__init__(master, **kwargs)
@@ -103,8 +117,9 @@ class CTkMessageBox(ctk.CTkToplevel):
     def __init__(self, title, message, button_text="OK"):
         super().__init__()
         self.title(title)
+
         self.geometry("300x150")
-        self.resizable(False, False)
+        #self.resizable(False, False)
 
         self.label_message = ctk.CTkLabel(self, text=message, wraplength=250, font=("Arial", 12))
         self.label_message.pack(pady=20, padx=10)
@@ -112,8 +127,10 @@ class CTkMessageBox(ctk.CTkToplevel):
         self.button = ctk.CTkButton(self, text=button_text, command=self.close)
         self.button.pack(pady=10)
 
-#        self.grab_set()  # Make the messagebox modal
+        center_window(self,300, 150, topmost=True)
+        self.grab_set()  # Make the messagebox modal
         self.focus_set()
+
 
     def close(self):
         self.destroy()
@@ -122,8 +139,8 @@ class CTkMessageBox(ctk.CTkToplevel):
 class SetMasterPasswordWindow(ctk.CTk):
     def __init__(self):
         super().__init__()
+        center_window(self, 400, 250)
         self.title("Set Master Password")
-        self.geometry("400x250")
 
         ctk.CTkLabel(self, text="Set your new Master Password:").pack(pady=(10, 5))
         ctk.CTkLabel(self, text="Enter Master Password:").pack()
@@ -174,7 +191,7 @@ class LoginWindow(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Login - Master Password")
-        self.geometry("400x200")
+        center_window(self, 400, 200, topmost=True)
 
         ctk.CTkLabel(self, text="Enter Master Password:").pack(pady=(15, 5))
         self.entry_master = ctk.CTkEntry(self, show="*")
@@ -262,7 +279,7 @@ class MainApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Password Manager - SQLite")
-        self.geometry("900x500")
+        center_window(self, 900, 500)
 
 
         self.remaining_time = 180  # 3 minuty w sekundach
@@ -309,11 +326,13 @@ class MainApp(ctk.CTk):
         btn_delete = ctk.CTkButton(self, text="Delete", command=self.delete_entry)
         btn_delete.grid(row=5, column=1, columnspan=2, padx=15, pady=8, sticky="we")
 
-        ctk.CTkLabel(self, text="Generate Password:").grid(row=6, column=1, columnspan=2, pady=(20, 5), sticky="we")
+        btn_copy = ctk.CTkButton(self, text="Copy to Clipboard", command=self.copy_password)
+        btn_copy.grid(row=6, column=1, columnspan=2, padx=15, pady=8, sticky="we")
 
-        # Ramka na suwak długości
+        ctk.CTkLabel(self, text="Generate Password:").grid(row=7, column=1, columnspan=2, pady=(20, 5), sticky="we")
+
         frame = ctk.CTkFrame(self)
-        frame.grid(row=7, column=1, columnspan=2, padx=10, pady=5, sticky="we")
+        frame.grid(row=8, column=1, columnspan=2, padx=10, pady=5, sticky="we")
 
         frame.grid_columnconfigure(0, weight=1)
         frame.grid_columnconfigure(1, weight=1)
@@ -329,11 +348,13 @@ class MainApp(ctk.CTk):
         self.label_value = ctk.CTkLabel(frame, text="12")
         self.label_value.grid(row=0, column=2, padx=(5, 10), pady=5, sticky="w")
 
+        # Pole na wygenerowane hasło przesuwamy do row=9
         self.generated_password = ctk.CTkEntry(self)
-        self.generated_password.grid(row=8, column=1, columnspan=2, pady=5, padx=10, sticky="we")
+        self.generated_password.grid(row=9, column=1, columnspan=2, pady=5, padx=10, sticky="we")
 
+        # Przycisk "Generate" przesuwamy do row=10
         btn_generate = ctk.CTkButton(self, text="Generate", command=self.generate_password)
-        btn_generate.grid(row=9, column=1, columnspan=2, pady=10, padx=10, sticky="we")
+        btn_generate.grid(row=10, column=1, columnspan=2, pady=10, padx=10, sticky="we")
 
         self.countdown_label.grid(row=11, column=1, columnspan=2, sticky="e", padx=5, pady=5)
 
@@ -469,6 +490,43 @@ class MainApp(ctk.CTk):
         except Exception as e:
             CTkMessageBox("Error", f"Error retrieving password: {e}")
 
+    def copy_password(self):
+        # Podobnie jak w get_password(), najpierw sprawdzamy zaznaczenie
+        selected_item = self.listbox.listbox.get(self.listbox.listbox.curselection())
+
+        if not selected_item:
+            CTkMessageBox("Error", "No item selected from the list!")
+            return
+
+        try:
+            # Wyciągamy website i username
+            website, username = selected_item.replace("Website: ", "").split(", User: ")
+        except ValueError:
+            CTkMessageBox("Error", "Invalid item selected. Could not parse website and username.")
+            return
+
+        # Pobieramy zaszyfrowane hasło z bazy
+        try:
+            cursor.execute(
+                "SELECT password FROM passwords WHERE website=? AND username=?",
+                (website, username)
+            )
+            result = cursor.fetchone()
+            if result:
+                encrypted_pass = result[0]
+                decrypted_pass = decrypt_password(encrypted_pass)
+
+                # Kopiujemy odszyfrowane hasło do schowka
+                # (w tkinter: self.clipboard_clear(); self.clipboard_append())
+                self.clipboard_clear()
+                self.clipboard_append(decrypted_pass)
+
+                CTkMessageBox("Clipboard", "Password copied to clipboard!")
+            else:
+                CTkMessageBox("Error", "No password found for the given WEBSITE and USERNAME.")
+        except Exception as e:
+            CTkMessageBox("Error", f"Error retrieving password: {e}")
+
 
     def delete_entry(self):
         # Get the selected item from the listbox
@@ -484,6 +542,8 @@ class MainApp(ctk.CTk):
         except ValueError:
             CTkMessageBox("Error", "Invalid item selected. Could not parse website and username.")
             return
+
+
 
         # Delete the corresponding entry from the database
         try:

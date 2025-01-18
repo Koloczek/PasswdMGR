@@ -262,72 +262,80 @@ class MainApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Password Manager - SQLite")
-        self.geometry("700x450")  # Początkowy rozmiar okna
+        self.geometry("900x500")
+
 
         self.remaining_time = 180  # 3 minuty w sekundach
         self.countdown_label = ctk.CTkLabel(self, text=f"Session time left: {self.remaining_time}s")
-        self.countdown_label.grid(row=10, column=1, sticky="e", padx=5, pady=5)
 
-        # Nasłuchiwanie ruchu myszki, klawiatury -> reset timera
         self.bind("<Motion>", self.reset_inactivity_timer)
         self.bind("<Key>", self.reset_inactivity_timer)
 
         self.update_timer()
 
-        # Ustawienie skalowalności dla całego okna
-        self.grid_rowconfigure((0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10), weight=1)  # Wszystkie wiersze
-        self.grid_columnconfigure((0, 1), weight=1)  # Obie kolumny
+        self.grid_columnconfigure(0, weight=1)  # listbox
+        self.grid_columnconfigure(1, weight=0)  # label
+        self.grid_columnconfigure(2, weight=1)  # entry
+        for r in range(12):
+            self.grid_rowconfigure(r, weight=0)
+        self.grid_rowconfigure(11, weight=1)
 
-        self.listbox = SelectListBox(self, width=200)
-        self.listbox.grid(row=0, column=0, sticky="nsew")
+        # Lewa strona
+        self.listbox = SelectListBox(self, width=250)
+        self.listbox.grid(row=0, column=0, rowspan=12, sticky="nsew", padx=10, pady=10)
 
-        ctk.CTkLabel(self, text="WEBSITE:").grid(row=0, column=0, padx=10, pady=5, sticky="e")
+        # Prawa strona
+        # Wiersz 0
+        ctk.CTkLabel(self, text="WEBSITE:").grid(row=0, column=1, padx=10, pady=5, sticky="e")
         self.entry_site = ctk.CTkEntry(self)
-        self.entry_site.grid(row=0, column=1, padx=10, pady=5, sticky="we")
+        self.entry_site.grid(row=0, column=2, padx=10, pady=5, sticky="we")
 
-        ctk.CTkLabel(self, text="USERNAME:").grid(row=1, column=0, padx=10, pady=5, sticky="e")
+        # Wiersz 1
+        ctk.CTkLabel(self, text="USERNAME:").grid(row=1, column=1, padx=10, pady=5, sticky="e")
         self.entry_username = ctk.CTkEntry(self)
-        self.entry_username.grid(row=1, column=1, padx=10, pady=5, sticky="we")
+        self.entry_username.grid(row=1, column=2, padx=10, pady=5, sticky="we")
 
-        ctk.CTkLabel(self, text="PASSWORD:").grid(row=2, column=0, padx=10, pady=5, sticky="e")
+        # Wiersz 2
+        ctk.CTkLabel(self, text="PASSWORD:").grid(row=2, column=1, padx=10, pady=5, sticky="e")
         self.entry_password = ctk.CTkEntry(self)
-        self.entry_password.grid(row=2, column=1, padx=10, pady=5, sticky="we")
+        self.entry_password.grid(row=2, column=2, padx=10, pady=5, sticky="we")
 
         btn_add = ctk.CTkButton(self, text="Add", command=self.add_password)
-        btn_add.grid(row=3, column=0, padx=15, pady=8, sticky="we")
+        btn_add.grid(row=3, column=1, columnspan=2, padx=15, pady=8, sticky="we")
 
         btn_get = ctk.CTkButton(self, text="Get", command=self.get_password)
-        btn_get.grid(row=3, column=1, padx=15, pady=8, sticky="we")
+        btn_get.grid(row=4, column=1, columnspan=2, padx=15, pady=8, sticky="we")
 
         btn_delete = ctk.CTkButton(self, text="Delete", command=self.delete_entry)
-        btn_delete.grid(row=4, column=1, padx=15, pady=8, sticky="we")
+        btn_delete.grid(row=5, column=1, columnspan=2, padx=15, pady=8, sticky="we")
 
-        # Generator haseł
-        ctk.CTkLabel(self, text="Generate Password:").grid(row=5, column=0, columnspan=2, pady=(20, 5))
+        ctk.CTkLabel(self, text="Generate Password:").grid(row=6, column=1, columnspan=2, pady=(20, 5), sticky="we")
 
-        # Ramka na długość i suwak
+        # Ramka na suwak długości
         frame = ctk.CTkFrame(self)
-        frame.grid(row=6, column=0, columnspan=2, padx=10, pady=5, sticky="nsew")
+        frame.grid(row=7, column=1, columnspan=2, padx=10, pady=5, sticky="we")
 
         frame.grid_columnconfigure(0, weight=1)
         frame.grid_columnconfigure(1, weight=1)
         frame.grid_columnconfigure(2, weight=1)
 
-        self.label_length = ctk.CTkLabel(frame, text="Length:", anchor="w")
-        self.label_length.grid(row=0, column=0, padx=(10, 5), pady=5, sticky="w")
+        self.label_length = ctk.CTkLabel(frame, text="Length:")
+        self.label_length.grid(row=0, column=0, padx=(10, 5), pady=5, sticky="e")
 
         self.suwak_dlugosc = ctk.CTkSlider(frame, from_=4, to=32, number_of_steps=28, command=self.update_label)
         self.suwak_dlugosc.set(12)
-        self.suwak_dlugosc.grid(row=0, column=1, padx=(5, 10), pady=5, sticky="we")
+        self.suwak_dlugosc.grid(row=0, column=1, padx=(5, 5), pady=5, sticky="we")
 
-        self.label_value = ctk.CTkLabel(frame, text="12")  # Domyślna wartość
-        self.label_value.grid(row=0, column=2, padx=(5, 10), pady=5, sticky="e")
+        self.label_value = ctk.CTkLabel(frame, text="12")
+        self.label_value.grid(row=0, column=2, padx=(5, 10), pady=5, sticky="w")
 
         self.generated_password = ctk.CTkEntry(self)
-        self.generated_password.grid(row=7, column=0, columnspan=2, pady=5, padx=10, sticky="we")
+        self.generated_password.grid(row=8, column=1, columnspan=2, pady=5, padx=10, sticky="we")
 
         btn_generate = ctk.CTkButton(self, text="Generate", command=self.generate_password)
-        btn_generate.grid(row=8, column=0, columnspan=2, pady=10, padx=10, sticky="we")
+        btn_generate.grid(row=9, column=1, columnspan=2, pady=10, padx=10, sticky="we")
+
+        self.countdown_label.grid(row=11, column=1, columnspan=2, sticky="e", padx=5, pady=5)
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 

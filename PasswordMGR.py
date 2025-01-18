@@ -67,6 +67,27 @@ cursor.execute("SELECT password_hash FROM master_password LIMIT 1")
 row = cursor.fetchone()
 MASTER_PASSWORD_SET = True if (row and row[0]) else False
 
+
+class CTkMessageBox(ctk.CTkToplevel):
+    def __init__(self, title, message, button_text="OK"):
+        super().__init__()
+        self.title(title)
+        self.geometry("300x150")
+        self.resizable(False, False)
+
+        self.label_message = ctk.CTkLabel(self, text=message, wraplength=250, font=("Arial", 12))
+        self.label_message.pack(pady=20, padx=10)
+
+        self.button = ctk.CTkButton(self, text=button_text, command=self.close)
+        self.button.pack(pady=10)
+
+#        self.grab_set()  # Make the messagebox modal
+        self.focus_set()
+
+    def close(self):
+        self.destroy()
+
+
 class SetMasterPasswordWindow(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -92,10 +113,10 @@ class SetMasterPasswordWindow(ctk.CTk):
         p2 = self.entry_pass2.get()
 
         if not p1 or not p2:
-            messagebox.showerror("Error", "Fields cannot be empty!")
+            CTkMessageBox("Error", "Fields cannot be empty!")
             return
         if p1 != p2:
-            messagebox.showerror("Error", "Passwords do not match!")
+            CTkMessageBox("Error", "Passwords do not match!")
             return
 
         hashed = hash_master_password(p1)
@@ -106,7 +127,7 @@ class SetMasterPasswordWindow(ctk.CTk):
             """, (1, hashed, 0, None))
             conn.commit()
 
-            messagebox.showinfo("Success", "Master Password has been set!")
+            CTkMessageBox("Success", "Master Password has been set!")
             self.destroy()
             main_app = MainApp()
             main_app.mainloop()
@@ -137,13 +158,13 @@ class LoginWindow(ctk.CTk):
     def check_password(self):
         user_input = self.entry_master.get().strip()
         if not user_input:
-            messagebox.showerror("Error", "Password cannot be empty!")
+            CTkMessageBox("Error", "Password cannot be empty!")
             return
 
         cursor.execute("SELECT password_hash, attempt_count, lock_until FROM master_password LIMIT 1")
         result = cursor.fetchone()
         if not result:
-            messagebox.showerror("Error", "No Master Password found in DB!")
+            CTkMessageBox("Error", "No Master Password found in DB!")
             conn.close()
             self.destroy()
             exit(0)
@@ -155,7 +176,7 @@ class LoginWindow(ctk.CTk):
             remaining = int(lock_until - now)
             mins = remaining // 60
             secs = remaining % 60
-            messagebox.showerror(
+            CTkMessageBox(
                 "Locked",
                 f"Too many failed attempts. Please wait {mins}m {secs}s before next try."
             )
@@ -170,7 +191,8 @@ class LoginWindow(ctk.CTk):
             """)
             conn.commit()
 
-            messagebox.showinfo("Success", "Login successful!")
+            CTkMessageBox("Success", "Login successful!")
+            time.sleep(1)
             self.destroy()
             main_app = MainApp()
             main_app.mainloop()
@@ -185,7 +207,7 @@ class LoginWindow(ctk.CTk):
                     WHERE id = 1
                 """, (lock_time,))
                 conn.commit()
-                messagebox.showerror(
+                CTkMessageBox(
                     "Locked",
                     "You have entered incorrect password 3 times!\n"
                     "Login is locked for 15 minutes."
@@ -198,7 +220,7 @@ class LoginWindow(ctk.CTk):
                 """, (attempt_count,))
                 conn.commit()
                 attempts_left = 3 - attempt_count
-                messagebox.showerror("Error", f"Invalid Master Password! Attempts left: {attempts_left}")
+                CTkMessageBox("Error", f"Invalid Master Password! Attempts left: {attempts_left}")
 
     def on_closing(self):
         conn.close()
@@ -239,16 +261,16 @@ class MainApp(ctk.CTk):
 
     def validate_input(self, website, username, password):
         if not website or not username or not password:
-            messagebox.showerror("Error", "Fields cannot be empty!")
+            CTkMessageBox("Error", "Fields cannot be empty!")
             return False
         if website == username == password:
-            messagebox.showerror("Error", "Website, Username and Password cannot all be identical!")
+            CTkMessageBox("Error", "Website, Username and Password cannot all be identical!")
             return False
 
         cursor.execute("SELECT id FROM passwords WHERE website=? AND username=?", (website, username))
         existing = cursor.fetchone()
         if existing:
-            messagebox.showerror("Error", "Entry with this WEBSITE and USERNAME already exists!")
+            CTkMessageBox("Error", "Entry with this WEBSITE and USERNAME already exists!")
             return False
         return True
 
@@ -267,16 +289,16 @@ class MainApp(ctk.CTk):
                 VALUES (?, ?, ?)
             """, (website, username, encrypted_passwd))
             conn.commit()
-            messagebox.showinfo("Success", "Password added!")
+            CTkMessageBox("Success", "Password added!")
         except Exception as e:
-            messagebox.showerror("Error", f"Error adding record: {e}")
+            CTkMessageBox("Error", f"Error adding record: {e}")
 
     def get_password(self):
         website = self.entry_site.get().strip()
         username = self.entry_username.get().strip()
 
         if not website or not username:
-            messagebox.showerror("Error", "Please enter both WEBSITE and USERNAME")
+            CTkMessageBox("Error", "Please enter both WEBSITE and USERNAME")
             return
 
         try:
@@ -289,11 +311,11 @@ class MainApp(ctk.CTk):
                 encrypted_pass = result[0]
                 decrypted_pass = decrypt_password(encrypted_pass)
                 msg = f"Password for {username} at {website}:\n{decrypted_pass}"
-                messagebox.showinfo("Password", msg)
+                CTkMessageBox("Password", msg)
             else:
-                messagebox.showerror("Error", "No password found for given WEBSITE and USERNAME")
+                CTkMessageBox("Error", "No password found for given WEBSITE and USERNAME")
         except Exception as e:
-            messagebox.showerror("Error", f"Error retrieving password: {e}")
+            CTkMessageBox("Error", f"Error retrieving password: {e}")
 
     def get_list(self):
         try:
@@ -303,18 +325,18 @@ class MainApp(ctk.CTk):
                 msg = "List of stored credentials:\n\n"
                 for site, user in results:
                     msg += f"Website: {site}, User: {user}\n"
-                messagebox.showinfo("UserList", msg)
+                CTkMessageBox("UserList", msg)
             else:
-                messagebox.showinfo("UserList", "Empty list!")
+                CTkMessageBox("UserList", "Empty list!")
         except Exception as e:
-            messagebox.showerror("Error", f"Error retrieving list: {e}")
+            CTkMessageBox("Error", f"Error retrieving list: {e}")
 
     def delete_entry(self):
         website = self.entry_site.get().strip()
         username = self.entry_username.get().strip()
 
         if not website or not username:
-            messagebox.showerror("Error", "Please enter both WEBSITE and USERNAME to delete")
+            CTkMessageBox("Error", "Please enter both WEBSITE and USERNAME to delete")
             return
 
         try:
@@ -324,11 +346,11 @@ class MainApp(ctk.CTk):
             )
             conn.commit()
             if cursor.rowcount > 0:
-                messagebox.showinfo("Success", f"Deleted entry for {username} at {website}")
+                CTkMessageBox("Success", f"Deleted entry for {username} at {website}")
             else:
-                messagebox.showerror("Error", "No entry found to delete for given WEBSITE and USERNAME")
+                CTkMessageBox("Error", "No entry found to delete for given WEBSITE and USERNAME")
         except Exception as e:
-            messagebox.showerror("Error", f"Error deleting entry: {e}")
+            CTkMessageBox("Error", f"Error deleting entry: {e}")
 
     def on_closing(self):
         conn.close()

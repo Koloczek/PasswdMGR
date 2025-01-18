@@ -132,7 +132,7 @@ class SetMasterPasswordWindow(ctk.CTk):
             main_app = MainApp()
             main_app.mainloop()
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to save Master Password: {e}")
+            CTkMessageBox("Error", f"Failed to save Master Password: {e}")
 
     def on_closing(self):
         conn.close()
@@ -279,7 +279,7 @@ class MainApp(ctk.CTk):
             self.after(1000, self.update_timer)
         else:
             # Czas się skończył = automatyczne wylogowanie
-            messagebox.showinfo("Session Timeout", "Your session has expired. Please re-enter your Master Password.")
+            CTkMessageBox("Session Timeout", "Your session has expired. Please re-enter your Master Password.")
             self.destroy()
 
             # Otwieramy ponownie okno logowania

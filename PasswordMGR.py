@@ -211,6 +211,16 @@ class MainApp(ctk.CTk):
         self.title("Password Manager - SQLite")
         self.geometry("500x350")
 
+        self.remaining_time = 180  # 3 minuty w sekundach
+        self.countdown_label = ctk.CTkLabel(self, text=f"Session time left: {self.remaining_time}s")
+        self.countdown_label.grid(row=5, column=1, sticky="e", padx=5, pady=5)
+
+        # Nasłuchiwanie ruchu myszki, klawiatury -> reset timera
+        self.bind("<Motion>", self.reset_inactivity_timer)
+        self.bind("<Key>", self.reset_inactivity_timer)
+
+        self.update_timer()
+
         ctk.CTkLabel(self, text="WEBSITE:").grid(row=0, column=0, padx=10, pady=5, sticky="e")
         self.entry_site = ctk.CTkEntry(self, width=200)
         self.entry_site.grid(row=0, column=1, padx=10, pady=5)
@@ -236,6 +246,23 @@ class MainApp(ctk.CTk):
         btn_delete.grid(row=4, column=1, padx=15, pady=8, sticky="we")
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def reset_inactivity_timer(self, event=None):
+        self.remaining_time = 180 # tu ustawiamy czas
+
+    def update_timer(self):
+        if self.remaining_time > 0:
+            self.remaining_time -= 1
+            self.countdown_label.configure(text=f"Session time left: {self.remaining_time}s")
+            self.after(1000, self.update_timer)
+        else:
+            # Czas się skończył = automatyczne wylogowanie
+            messagebox.showinfo("Session Timeout", "Your session has expired. Please re-enter your Master Password.")
+            self.destroy()
+
+            # Otwieramy ponownie okno logowania
+            login_window = LoginWindow()
+            login_window.mainloop()
 
     def validate_input(self, website, username, password):
         if not website or not username or not password:

@@ -4,6 +4,8 @@ import hashlib
 import os
 import sqlite3
 import time
+import random
+import string
 from cryptography.fernet import Fernet
 
 DB_FILENAME = "password_manager.db"
@@ -231,11 +233,11 @@ class MainApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Password Manager - SQLite")
-        self.geometry("500x350")
+        self.geometry("500x450")  # Początkowy rozmiar okna
 
         self.remaining_time = 180  # 3 minuty w sekundach
         self.countdown_label = ctk.CTkLabel(self, text=f"Session time left: {self.remaining_time}s")
-        self.countdown_label.grid(row=5, column=1, sticky="e", padx=5, pady=5)
+        self.countdown_label.grid(row=10, column=1, sticky="e", padx=5, pady=5)
 
         # Nasłuchiwanie ruchu myszki, klawiatury -> reset timera
         self.bind("<Motion>", self.reset_inactivity_timer)
@@ -243,17 +245,21 @@ class MainApp(ctk.CTk):
 
         self.update_timer()
 
+        # Ustawienie skalowalności dla całego okna
+        self.grid_rowconfigure((0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10), weight=1)  # Wszystkie wiersze
+        self.grid_columnconfigure((0, 1), weight=1)  # Obie kolumny
+
         ctk.CTkLabel(self, text="WEBSITE:").grid(row=0, column=0, padx=10, pady=5, sticky="e")
-        self.entry_site = ctk.CTkEntry(self, width=200)
-        self.entry_site.grid(row=0, column=1, padx=10, pady=5)
+        self.entry_site = ctk.CTkEntry(self)
+        self.entry_site.grid(row=0, column=1, padx=10, pady=5, sticky="we")
 
         ctk.CTkLabel(self, text="USERNAME:").grid(row=1, column=0, padx=10, pady=5, sticky="e")
-        self.entry_username = ctk.CTkEntry(self, width=200)
-        self.entry_username.grid(row=1, column=1, padx=10, pady=5)
+        self.entry_username = ctk.CTkEntry(self)
+        self.entry_username.grid(row=1, column=1, padx=10, pady=5, sticky="we")
 
         ctk.CTkLabel(self, text="PASSWORD:").grid(row=2, column=0, padx=10, pady=5, sticky="e")
-        self.entry_password = ctk.CTkEntry(self, width=200)
-        self.entry_password.grid(row=2, column=1, padx=10, pady=5)
+        self.entry_password = ctk.CTkEntry(self)
+        self.entry_password.grid(row=2, column=1, padx=10, pady=5, sticky="we")
 
         btn_add = ctk.CTkButton(self, text="Add", command=self.add_password)
         btn_add.grid(row=3, column=0, padx=15, pady=8, sticky="we")
@@ -267,7 +273,35 @@ class MainApp(ctk.CTk):
         btn_delete = ctk.CTkButton(self, text="Delete", command=self.delete_entry)
         btn_delete.grid(row=4, column=1, padx=15, pady=8, sticky="we")
 
+        # Generator haseł
+        ctk.CTkLabel(self, text="Generate Password:").grid(row=5, column=0, columnspan=2, pady=(20, 5))
+
+        # Ramka na długość i suwak
+        frame = ctk.CTkFrame(self)
+        frame.grid(row=6, column=0, columnspan=2, padx=10, pady=5, sticky="nsew")
+
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_columnconfigure(1, weight=1)
+        frame.grid_columnconfigure(2, weight=1)
+
+        self.label_length = ctk.CTkLabel(frame, text="Length:", anchor="w")
+        self.label_length.grid(row=0, column=0, padx=(10, 5), pady=5, sticky="w")
+
+        self.suwak_dlugosc = ctk.CTkSlider(frame, from_=4, to=32, number_of_steps=28, command=self.update_label)
+        self.suwak_dlugosc.set(12)
+        self.suwak_dlugosc.grid(row=0, column=1, padx=(5, 10), pady=5, sticky="we")
+
+        self.label_value = ctk.CTkLabel(frame, text="12")  # Domyślna wartość
+        self.label_value.grid(row=0, column=2, padx=(5, 10), pady=5, sticky="e")
+
+        self.generated_password = ctk.CTkEntry(self)
+        self.generated_password.grid(row=7, column=0, columnspan=2, pady=5, padx=10, sticky="we")
+
+        btn_generate = ctk.CTkButton(self, text="Generate", command=self.generate_password)
+        btn_generate.grid(row=8, column=0, columnspan=2, pady=10, padx=10, sticky="we")
+
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
 
     def reset_inactivity_timer(self, event=None):
         self.remaining_time = 180 # tu ustawiamy czas
@@ -285,6 +319,28 @@ class MainApp(ctk.CTk):
             # Otwieramy ponownie okno logowania
             login_window = LoginWindow()
             login_window.mainloop()
+
+    def update_label(self, value):
+        self.label_value.configure(text=str(int(float(value))))
+
+    def generate_password(self):
+
+        dlugosc = int(self.suwak_dlugosc.get())
+        litery = string.ascii_letters
+        cyfry = string.digits
+        znaki_specjalne = string.punctuation
+
+        haslo = [
+            random.choice(litery),
+            random.choice(cyfry),
+            random.choice(znaki_specjalne),
+        ]
+        wszystkie_znaki = litery + cyfry + znaki_specjalne
+        haslo += random.choices(wszystkie_znaki, k=dlugosc - len(haslo))
+        random.shuffle(haslo)
+
+        self.generated_password.delete(0, ctk.END)
+        self.generated_password.insert(0, "".join(haslo))
 
     def validate_input(self, website, username, password):
         if not website or not username or not password:

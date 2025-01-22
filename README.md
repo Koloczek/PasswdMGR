@@ -238,3 +238,144 @@ Jeśli w bazie danych znajdują się wpisy, metoda iteruje przez wyniki i dodaje
 
 Metoda ```refresh_listbox``` pozwala na odświeżenie zawartości widżetu listy. Wywołuje wewnętrznie metodę ```populate_listbox```, która usuwa dotychczasowe dane i ponownie pobiera aktualne informacje z bazy danych. Dzięki temu zmiany wprowadzone w bazie danych, takie jak dodanie nowego wpisu, są od razu widoczne w interfejsie użytkownika.
 
+### Personalizowane okno dialogowe
+
+Klasa ```CTkMessageBox``` jest rozszerzeniem klasy ```CTkToplevel``` z biblioteki CustomTkinter i służy do tworzenia prostych, personalizowanych okien dialogowych, które wyświetlają komunikaty dla użytkownika. Klasa zawiera konstruktor oraz metodę umożliwiającą zamykanie okna.,
+
+```python
+class CTkMessageBox(ctk.CTkToplevel):
+    def __init__(self, title, message, button_text="OK"):
+        super().__init__()
+        self.title(title)
+
+        self.geometry("300x150")
+        #self.resizable(False, False)
+
+        self.label_message = ctk.CTkLabel(self, text=message, wraplength=250, font=("Arial", 12))
+        self.label_message.pack(pady=20, padx=10)
+
+        self.button = ctk.CTkButton(self, text=button_text, command=self.close)
+        self.button.pack(pady=10)
+
+        center_window(self,300, 150, topmost=True)
+        self.grab_set()  # Make the messagebox modal
+        self.focus_set()
+
+
+    def close(self):
+        self.destroy()
+```
+***Konstruktor ```__init__```***
+
+Konstruktor klasy inicjalizuje obiekt okna dialogowego z przekazanymi argumentami ```title```, ```message``` oraz opcjonalnym ```button_text``` (domyślnie ustawionym na ```"OK"```). Oto szczegóły działania konstruktora:
+1. *Tytuł okna:*
+   - Tytuł okna dialogowego jest ustawiany za pomocą ```self.title(title)```, gdzie ```title``` to wartość przekazana podczas wywołania klasy.
+     
+2. *Wymiary okna:*
+   - Geometria okna jest ustawiona na 300 pikseli szerokości i 150 pikseli wysokości za pomocą ```self.geometry("300x150")```. Okno jest wystarczająco duże, aby wyświetlić wiadomość i przycisk.
+
+3. *Etykieta z wiadomością:*
+   - Treść komunikatu jest wyświetlana za pomocą etykiety ```CTkLabel```, która korzysta z argumentu ```message```. Właściwość ```wraplength=250``` zapewnia, że tekst jest zawijany, jeśli przekracza szerokość 250 pikseli, co poprawia czytelność. Etykieta jest pakowana z odstępami ```padx=10``` i ```pady=20```.
+
+4. *Przycisk zamykający:*
+   - Przycisk ```CTkButton``` z tekstem ```button_text``` umożliwia zamknięcie okna dialogowego. Działanie przycisku jest powiązane z metodą ```close```, która niszczy okno. Przycisk jest pakowany z pionowym odstępem ```pady=10```.
+
+5. *Centrowanie i ustawienia modalne:*
+   - Funkcja ```center_window``` jest wywoływana, aby wycentrować okno na ekranie. Parametr ```topmost=True``` sprawia, że okno jest wyświetlane zawsze na wierzchu. Dodatkowo, metoda ```grab_set``` ustawia okno jako modalne, co oznacza, że użytkownik nie może wchodzić w interakcję z innymi oknami aplikacji, dopóki to okno dialogowe nie zostanie zamknięte. Metoda ```focus_set``` zapewnia, że okno dialogowe otrzymuje fokus.
+
+***Metoda ```close```***
+
+Metoda ```close``` jest wywoływana po kliknięciu przycisku zamykającego okno dialogowe. Funkcja ta niszczy obiekt okna za pomocą metody ```self.destroy()```, co powoduje zamknięcie okna i przywrócenie interakcji z pozostałymi elementami aplikacji.
+
+###Okno ustawiania hasła głównego
+
+Klasa ta zawiera konstruktor odpowiedzialny za tworzenie interfejsu graficznego oraz metody obsługujące ustawienie hasła i zamykanie okna.
+
+```python
+class SetMasterPasswordWindow(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        center_window(self, 400, 250)
+        self.title("Set Master Password")
+
+        ctk.CTkLabel(self, text="Set your new Master Password:").pack(pady=(10, 5))
+        ctk.CTkLabel(self, text="Enter Master Password:").pack()
+        self.entry_pass1 = ctk.CTkEntry(self, show="*")
+        self.entry_pass1.pack(pady=5)
+
+        ctk.CTkLabel(self, text="Confirm Master Password:").pack()
+        self.entry_pass2 = ctk.CTkEntry(self, show="*")
+        self.entry_pass2.pack(pady=5)
+
+        btn_set = ctk.CTkButton(self, text="Set Master Password", command=self.set_master_password)
+        btn_set.pack(pady=(10, 5))
+
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def set_master_password(self):
+        p1 = self.entry_pass1.get()
+        p2 = self.entry_pass2.get()
+
+        if not p1 or not p2:
+            CTkMessageBox("Error", "Fields cannot be empty!")
+            return
+        if p1 != p2:
+            CTkMessageBox("Error", "Passwords do not match!")
+            return
+
+        hashed = hash_master_password(p1)
+        try:
+            cursor.execute("""
+                INSERT INTO master_password (id, password_hash, attempt_count, lock_until)
+                VALUES (?, ?, ?, ?)
+            """, (1, hashed, 0, None))
+            conn.commit()
+
+            CTkMessageBox("Success", "Master Password has been set!")
+            self.destroy()
+            main_app = MainApp()
+            main_app.mainloop()
+        except Exception as e:
+            CTkMessageBox("Error", f"Failed to save Master Password: {e}")
+
+    def on_closing(self):
+        conn.close()
+        self.destroy()
+        exit(0)
+```
+
+***Konstruktor ```__init__```***
+
+Konstruktor klasy ```SetMasterPasswordWindow``` inicjalizuje okno, które pozwala użytkownikowi wprowadzić i potwierdzić hasło główne. Oto szczegóły działania:
+
+1. *Wygląd i położenie okna:*
+    - Funkcja ```center_window``` jest wywoływana, aby wyśrodkować okno na ekranie. Rozmiar okna jest ustawiony na 400 pikseli szerokości i 250 pikseli wysokości. Tytuł okna jest ustawiony na ```"Set Master Password"```.
+
+2. *Etykiety i pola wprowadzania haseł:*
+    - Na początku użytkownik widzi etykietę z informacją ```"Set your new Master Password:"```. Następnie wyświetlane są pola wprowadzania dla hasła głównego (```entry_pass1```) i jego potwierdzenia (```entry_pass2```). Oba pola są skonfigurowane z opcją ```show="*"```, aby ukryć wprowadzane znaki.
+
+3. *Przycisk ustawienia hasła:*
+    - Przycisk ```"Set Master Password"``` jest połączony z metodą ```set_master_password```, która obsługuje logikę zapisywania hasła głównego do bazy danych. Przycisk jest umieszczony poniżej pól wprowadzania.
+
+4. *Zamykanie okna:*
+    - Obsługa zdarzenia zamknięcia okna jest powiązana z metodą ```on_closing```, która zapewnia bezpieczne zamknięcie bazy danych i aplikacji.
+  
+***Metoda ```set_master_password```***
+
+Metoda ```set_master_password``` odpowiada za walidację i zapisanie hasła głównego w bazie danych. Oto jej szczegóły:
+
+1. *Pobranie wprowadzonych danych:*
+    Hasło główne i jego potwierdzenie są odczytywane z pól ```entry_pass1``` i ```entry_pass2```.
+
+2. *Walidacja danych:*
+    Metoda sprawdza, czy oba pola nie są puste. Jeśli tak, wyświetlane jest okno dialogowe z błędem. Następnie metoda weryfikuje, czy oba wprowadzone hasła są identyczne. Jeśli nie, użytkownik otrzymuje komunikat o błędzie.
+
+3. *Haszowanie hasła:*
+    Po pomyślnej walidacji hasło jest haszowane za pomocą funkcji ```hash_master_password```. Wygenerowany skrót jest następnie zapisywany w tabeli ```master_password``` w bazie danych.
+
+4. *Zapis do bazy i reakcja na wynik:*
+    Jeśli hasło zostanie zapisane pomyślnie, użytkownik otrzymuje komunikat o sukcesie, a okno zostaje zamknięte. Następnie uruchamiana jest główna aplikacja za pomocą klasy ```MainApp```. W przypadku błędu podczas zapisu użytkownik otrzymuje komunikat z treścią błędu.
+
+***Metoda ```on_closing```***
+
+Metoda ```on_closing``` obsługuje zamknięcie okna ustawiania hasła głównego. Najpierw zamyka połączenie z bazą danych za pomocą ```conn.close()```, a następnie niszczy okno za pomocą ```self.destroy()``` i kończy działanie programu, wywołując funkcję ```exit(0)```.

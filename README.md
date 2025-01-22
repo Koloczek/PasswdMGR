@@ -379,3 +379,216 @@ Metoda ```set_master_password``` odpowiada za walidację i zapisanie hasła gł�
 ***Metoda ```on_closing```***
 
 Metoda ```on_closing``` obsługuje zamknięcie okna ustawiania hasła głównego. Najpierw zamyka połączenie z bazą danych za pomocą ```conn.close()```, a następnie niszczy okno za pomocą ```self.destroy()``` i kończy działanie programu, wywołując funkcję ```exit(0)```.
+
+
+###Okno logowania
+
+Użytkownik musi wprowadzić wcześniej ustawione hasło główne (Master Password), aby uzyskać dostęp do reszty funkcjonalności programu. Klasa zawiera konstruktor oraz dwie metody: jedną do sprawdzania poprawności hasła i drugą do obsługi zamykania aplikacji.
+
+```python 
+class LoginWindow(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        self.title("Login - Master Password")
+        center_window(self, 400, 200, topmost=True)
+
+        ctk.CTkLabel(self, text="Enter Master Password:").pack(pady=(15, 5))
+        self.entry_master = ctk.CTkEntry(self, show="*")
+        self.entry_master.pack(pady=5)
+
+        btn_ok = ctk.CTkButton(self, text="OK", command=self.check_password)
+        btn_ok.pack(pady=(10, 5))
+
+        self.entry_master.bind("<Return>", lambda e: self.check_password())
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def check_password(self):
+        user_input = self.entry_master.get().strip()
+        if not user_input:
+            CTkMessageBox("Error", "Password cannot be empty!")
+            return
+
+        cursor.execute("SELECT password_hash, attempt_count, lock_until FROM master_password LIMIT 1")
+        result = cursor.fetchone()
+        if not result:
+            CTkMessageBox("Error", "No Master Password found in DB!")
+            conn.close()
+            self.destroy()
+            exit(0)
+
+        stored_hash, attempt_count, lock_until = result
+
+        now = time.time()
+        if lock_until is not None and now < lock_until:
+            remaining = int(lock_until - now)
+            mins = remaining // 60
+            secs = remaining % 60
+            CTkMessageBox(
+                "Locked",
+                f"Too many failed attempts. Please wait {mins}m {secs}s before next try."
+            )
+            return
+
+        if hash_master_password(user_input) == stored_hash:
+            cursor.execute("""
+                UPDATE master_password
+                SET attempt_count = 0,
+                    lock_until = NULL
+                WHERE id = 1
+            """)
+            conn.commit()
+
+            CTkMessageBox("Success", "Login successful!")
+            time.sleep(1)
+            self.destroy()
+            main_app = MainApp()
+            main_app.mainloop()
+        else:
+            attempt_count += 1
+            if attempt_count >= 3:
+                lock_time = now + (15 * 60)
+                cursor.execute("""
+                    UPDATE master_password
+                    SET attempt_count = 0,
+                        lock_until = ?
+                    WHERE id = 1
+                """, (lock_time,))
+                conn.commit()
+                CTkMessageBox(
+                    "Locked",
+                    "You have entered incorrect password 3 times!\n"
+                    "Login is locked for 15 minutes."
+                )
+            else:
+                cursor.execute("""
+                    UPDATE master_password
+                    SET attempt_count = ?
+                    WHERE id = 1
+                """, (attempt_count,))
+                conn.commit()
+                attempts_left = 3 - attempt_count
+                CTkMessageBox("Error", f"Invalid Master Password! Attempts left: {attempts_left}")
+
+    def on_closing(self):
+        conn.close()
+        self.destroy()
+        exit(0)
+```
+
+***Metoda ```check_password```***
+
+Metoda ```check_password``` weryfikuje poprawność hasła wprowadzonego przez użytkownika. Proces przebiega w następujących krokach:
+
+1. *Pobranie i walidacja danych:*
+   - Wartość wprowadzona przez użytkownika jest pobierana z pola ```entry_master```, a białe znaki są usuwane za pomocą ```strip()```. Jeśli pole jest puste, wyświetlany jest komunikat o błędzie.
+
+2. *Pobranie danych z bazy:*
+   - Metoda wykonuje zapytanie SQL, aby pobrać zapisany w bazie skrót hasła głównego, liczbę nieudanych prób logowania (```attempt_count```) oraz czas blokady (```lock_until```). Jeśli w bazie nie ma hasła głównego, wyświetlany jest komunikat o błędzie i aplikacja kończy działanie.
+
+3. *Obsługa blokady logowania:*
+   - Jeśli czas bieżący (```time.time()```) jest mniejszy niż wartość ```lock_until```, użytkownik otrzymuje informację o blokadzie i liczbie minut oraz sekund pozostałych do jej zakończenia.
+
+4. *Porównanie hasła:*
+   - Hasło wprowadzone przez użytkownika jest haszowane za pomocą ```hash_master_password``` i porównywane z wartością w bazie danych. W przypadku zgodności:
+       - Licznik nieudanych prób logowania jest resetowany do zera.
+       - Ewentualna blokada zostaje usunięta.
+       - Wyświetlany jest komunikat o sukcesie, a główna aplikacja (```MainApp```) zostaje uruchomiona.
+
+   - W przypadku niezgodności:
+       - Licznik nieudanych prób jest zwiększany o jeden.
+       - Po trzech nieudanych próbach aplikacja blokuje logowanie na 15 minut, zapisując czas blokady do bazy danych.
+       - Jeśli liczba prób jest mniejsza niż trzy, użytkownik otrzymuje informację o liczbie pozostałych prób.
+
+5. *Aktualizacja danych w bazie:*
+   - Po każdej próbie logowania dane o liczniku prób i blokadzie są zapisywane w bazie danych.
+  
+### Główne okno menedżera haseł
+
+ To tutaj użytkownik może zarządzać swoimi zapisanymi hasłami, generować nowe, kopiować je do schowka oraz wprowadzać dane do bazy. Klasa zapewnia także funkcję automatycznego wylogowania po upływie określonego czasu bezczynności.
+
+```python
+class MainApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        self.title("Password Manager - SQLite")
+        center_window(self, 900, 500)
+
+
+        self.remaining_time = 180  # 3 minuty w sekundach
+        self.countdown_label = ctk.CTkLabel(self, text=f"Session time left: {self.remaining_time}s")
+
+        self.bind("<Motion>", self.reset_inactivity_timer)
+        self.bind("<Key>", self.reset_inactivity_timer)
+
+        self.update_timer()
+
+        self.grid_columnconfigure(0, weight=1)  # listbox
+        self.grid_columnconfigure(1, weight=0)  # label
+        self.grid_columnconfigure(2, weight=1)  # entry
+        for r in range(12):
+            self.grid_rowconfigure(r, weight=0)
+        self.grid_rowconfigure(11, weight=1)
+
+        # Lewa strona
+        self.listbox = SelectListBox(self, width=250)
+        self.listbox.grid(row=0, column=0, rowspan=12, sticky="nsew", padx=10, pady=10)
+
+        # Prawa strona
+        # Wiersz 0
+        ctk.CTkLabel(self, text="WEBSITE:").grid(row=0, column=1, padx=10, pady=5, sticky="e")
+        self.entry_site = ctk.CTkEntry(self)
+        self.entry_site.grid(row=0, column=2, padx=10, pady=5, sticky="we")
+
+        # Wiersz 1
+        ctk.CTkLabel(self, text="USERNAME:").grid(row=1, column=1, padx=10, pady=5, sticky="e")
+        self.entry_username = ctk.CTkEntry(self)
+        self.entry_username.grid(row=1, column=2, padx=10, pady=5, sticky="we")
+
+        # Wiersz 2
+        ctk.CTkLabel(self, text="PASSWORD:").grid(row=2, column=1, padx=10, pady=5, sticky="e")
+        self.entry_password = ctk.CTkEntry(self)
+        self.entry_password.grid(row=2, column=2, padx=10, pady=5, sticky="we")
+
+        btn_add = ctk.CTkButton(self, text="Add", command=self.add_password)
+        btn_add.grid(row=3, column=1, columnspan=2, padx=15, pady=8, sticky="we")
+
+        btn_get = ctk.CTkButton(self, text="Get", command=self.get_password)
+        btn_get.grid(row=4, column=1, columnspan=2, padx=15, pady=8, sticky="we")
+
+        btn_delete = ctk.CTkButton(self, text="Delete", command=self.delete_entry)
+        btn_delete.grid(row=5, column=1, columnspan=2, padx=15, pady=8, sticky="we")
+
+        btn_copy = ctk.CTkButton(self, text="Copy to Clipboard", command=self.copy_password)
+        btn_copy.grid(row=6, column=1, columnspan=2, padx=15, pady=8, sticky="we")
+
+        ctk.CTkLabel(self, text="Generate Password:").grid(row=7, column=1, columnspan=2, pady=(20, 5), sticky="we")
+
+        frame = ctk.CTkFrame(self)
+        frame.grid(row=8, column=1, columnspan=2, padx=10, pady=5, sticky="we")
+
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_columnconfigure(1, weight=1)
+        frame.grid_columnconfigure(2, weight=1)
+
+        self.label_length = ctk.CTkLabel(frame, text="Length:")
+        self.label_length.grid(row=0, column=0, padx=(10, 5), pady=5, sticky="e")
+
+        self.suwak_dlugosc = ctk.CTkSlider(frame, from_=4, to=32, number_of_steps=28, command=self.update_label)
+        self.suwak_dlugosc.set(12)
+        self.suwak_dlugosc.grid(row=0, column=1, padx=(5, 5), pady=5, sticky="we")
+
+        self.label_value = ctk.CTkLabel(frame, text="12")
+        self.label_value.grid(row=0, column=2, padx=(5, 10), pady=5, sticky="w")
+
+        # Pole na wygenerowane hasło przesuwamy do row=9
+        self.generated_password = ctk.CTkEntry(self)
+        self.generated_password.grid(row=9, column=1, columnspan=2, pady=5, padx=10, sticky="we")
+
+        # Przycisk "Generate" przesuwamy do row=10
+        btn_generate = ctk.CTkButton(self, text="Generate", command=self.generate_password)
+        btn_generate.grid(row=10, column=1, columnspan=2, pady=10, padx=10, sticky="we")
+
+        self.countdown_label.grid(row=11, column=1, columnspan=2, sticky="e", padx=5, pady=5)
+
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+```
